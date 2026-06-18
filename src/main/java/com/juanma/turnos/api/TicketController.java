@@ -7,7 +7,9 @@ import com.juanma.turnos.person.Person;
 import com.juanma.turnos.repository.PersonRepository;
 import com.juanma.turnos.service.TicketService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
@@ -28,7 +30,9 @@ public class TicketController {
             p.setLastName(dto.lastName());
             return personRepository.save(p);
         });
-
+        if(!dto.dni().matches("\\d{8}")){
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El DNI debe de contener 8 digitos como minimo");
+        }
         return ticketService.create(person);
     }
 
