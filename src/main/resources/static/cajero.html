@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8"/>
+    <link rel="icon" href="/images/favicon.png" type="image/png">
+    <title>Cajero - Turnos</title>
+    <style>
+        .row {
+            margin: 10px 0;
+        }
+
+        body {
+            font-family: system-ui, Arial;
+            margin: 0;
+            background: #f4f6f8;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+
+        button {
+            padding: 16px 32px;
+            margin: 16px;
+            font-size: 24px;
+            border-radius: 12px;
+            cursor: pointer;
+        }
+
+        .btn-next {
+            background: #1e579e;
+            color: #fff;
+        }
+
+        #nextPerson {
+            font-size: 32px;
+            font-weight: 800;
+            margin-top: 16px;
+        }
+    </style>
+</head>
+<body>
+<label for="moduleSelect" style="font-size: 18px; font-weight: 700;margin-bottom: 12px">
+    Seleccione modulo
+</label>
+<select id="moduleSelect">
+    <option value="1">Modulo 1</option>
+    <option value="2">Modulo 2</option>
+    <option value="3">Modulo 3</option>
+    <option value="4">Modulo 4</option>
+</select>
+<div class="row">
+    <button id="nextTurn" class="btn-next">Llamar siguiente</button>
+    <button id="finishBtn">Terminar atencion</button>
+</div>
+<div id="nextPerson"></div>
+<script>
+    const STORAGE_KEY = 'currentTicket';
+    let currentTicketSaved = null;
+    const nextBtn = document.getElementById('nextTurn');
+    const finishBtn = document.getElementById('finishBtn');
+    const nextPersonDiv = document.getElementById('nextPerson');
+    const moduleSelect = document.getElementById('moduleSelect');
+
+    //recuperar el estado al cargar
+    restoreFromStorage();
+    //funcion para llamar al siguiente turno
+    nextBtn.addEventListener('click', () => {
+        //leemos de memoria, antes de llamar al siguiente
+        restoreFromStorage();
+        if (restoreFromStorage()) {
+            alert("Debes terminar la atencion actual, antes de llamar a otro turno");
+            return;
+        }
+
+        const moduleNumber = moduleSelect.value;
+        fetch(`/api/tickets/next?module=${moduleNumber}`)
+            .then(res => {
+                if (!res.ok) {
+                    throw new Error("No hay turnos pendientes");
+                }
+                return res.json();
+            })
+            .then(dto => {
+                saveToStorage(dto);
+                restoreFromStorage(); //Actualiza la pantalla y desactiva el boton
+                //reproducir el audio
+                const audio = new Audio('/sound/chord.mp3');
+                audio.play().catch(err => console.log('Error al producir audio' + err));
+            })
+            .catch(err => {
+                nextPersonDiv.textContent = err.message;
+            })
+    });
+
+    //para terminar atencion
+    finishBtn.addEventListener('click', () => {
+        //reeler simpre desde memoria por si hubo refresh
+        if (!restoreFromStorage()) {
+            alert("No hay tickets en atencion!");
+            return;
+        }
+
+        fetch(`/api/tickets/${currentTicketSaved.id}/serve`, {method: 'POST'})
+            .then(res => res.json())
+            .then(() => {
+                cleanStorage();
+                restoreFromStorage();
+            });
+    })
+
+    /*
+    Recupera desde el locaStorage un objeto de tipo ticket, en caso existiera,
+    el boton de "Llamar siguiente" estara deshabilitado, hasta que el cajero
+    termine la atencionactual, sino hay ningun valor u objetoen el locaStorage
+    el boton "Llama siguiente" se habilitara nuevamente
+    */
+    function restoreFromStorage() {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        currentTicketSaved = raw ? JSON.parse(raw) : null;
+
+        if (currentTicketSaved) {
+            nextPersonDiv.textContent = `En atencion: ${currentTicketSaved.fullName} | Turno: ${currentTicketSaved.code}`;
+            nextBtn.disabled = true; //Bloear "Llamar siguiente"
+            moduleSelect.value = currentTicketSaved.moduleNumber;//la etiqueta select mostrara el modulo seleccionado que se guardo en memoria
+            return true; //hay un ticket activo
+        } else {
+            nextPersonDiv.textContent = `Nadie en atencion`;
+            nextBtn.disabled = false;
+            return false; //no hay ticket activo
+        }
+    }
+
+    function saveToStorage(ticket) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(ticket));
+        currentTicketSaved = ticket;
+    }
+
+    function cleanStorage() {
+        localStorage.removeItem(STORAGE_KEY);
+        currentTicketSaved = null;
+    }
+
+    //prevenir cerrar o recargar la pagina, si hay un ticket en atencion
+    window.addEventListener('beforeunload', function (e) {
+        const currentTicket = localStorage.getItem("currentTicket");
+        if (currentTicket) {
+            e.preventDefault();
+        }
+    });
+</script>
+</body>
+</html>
